@@ -123,26 +123,43 @@ st.markdown("""
 def load_data():
     df = pd.read_csv("healthcare_dataset.csv")
     df.columns = df.columns.str.strip()
+
     df["Date of Admission"] = pd.to_datetime(df["Date of Admission"], errors="coerce")
-    df["Discharge Date"]    = pd.to_datetime(df["Discharge Date"],    errors="coerce")
-    df["Length of Stay"]    = (df["Discharge Date"] - df["Date of Admission"]).dt.days.fillna(0).astype(int)
-    df["Admission Year"]    = df["Date of Admission"].dt.year
-    df["Admission Month"]   = df["Date of Admission"].dt.month_name()
-    df["Billing Amount"]    = pd.to_numeric(df["Billing Amount"], errors="coerce").fillna(0)
-    df["High Cost"]         = (df["Billing Amount"] > df["Billing Amount"].quantile(0.80)).astype(int)
-    df["Age Group"]         = pd.cut(df["Age"], bins=[0,18,35,50,65,120],
-                                      labels=["<18","18-35","35-50","50-65","65+"])
+    df["Discharge Date"] = pd.to_datetime(df["Discharge Date"], errors="coerce")
 
-    # ── FIXED: Z-Score anomaly detection (flags ~5% of records) ──
-    mean            = df["Billing Amount"].mean()
-    std             = df["Billing Amount"].std()
-    df["Z_Score"]   = (df["Billing Amount"] - mean) / std
-    df["Anomaly"]   = df["Z_Score"].abs() > 2
+    df["Length of Stay"] = (df["Discharge Date"] - df["Date of Admission"]).dt.days.fillna(0).astype(int)
+    df["Admission Year"] = df["Date of Admission"].dt.year
+    df["Admission Month"] = df["Date of Admission"].dt.month_name()
 
-    # Extra flag: unusually long stays
-    stay_mean            = df["Length of Stay"].mean()
-    stay_std             = df["Length of Stay"].std()
+    df["Billing Amount"] = pd.to_numeric(df["Billing Amount"], errors="coerce").fillna(0)
+
+    df["High Cost"] = (df["Billing Amount"] > df["Billing Amount"].quantile(0.80)).astype(int)
+
+    df["Age Group"] = pd.cut(
+        df["Age"],
+        bins=[0,18,35,50,65,120],
+        labels=["<18","18-35","35-50","50-65","65+"]
+    )
+
+    # ✅ PERCENTILE-BASED ANOMALY DETECTION
+    # IQR method returns 0 anomalies on this dataset because billing is uniformly
+    # distributed — fences fall outside the actual data range.
+    # Percentile flagging is robust regardless of distribution shape.
+    lower_bound = df["Billing Amount"].quantile(0.05)
+    upper_bound = df["Billing Amount"].quantile(0.95)
+
+    df["Anomaly"] = (df["Billing Amount"] < lower_bound) | (df["Billing Amount"] > upper_bound)
+
+    # Optional: still keep Z-score for display
+    mean = df["Billing Amount"].mean()
+    std = df["Billing Amount"].std()
+    df["Z_Score"] = (df["Billing Amount"] - mean) / std
+
+    # Long stay flag
+    stay_mean = df["Length of Stay"].mean()
+    stay_std = df["Length of Stay"].std()
     df["Long_Stay_Flag"] = df["Length of Stay"] > (stay_mean + 2 * stay_std)
+
     return df
 
 df = load_data()
@@ -409,7 +426,7 @@ with tab4:
         insight_box([
             f"Anomalies are **{ratio:.1f}x** higher than the average claim",
             "Red outliers represent potential billing errors or fraud cases",
-            "Z-Score method flags values > 2 standard deviations from the mean"
+            "Percentile method flags the bottom 5% and top 5% of all billing amounts"
         ])
     with c2:
         st.markdown("**Anomalies by Medical Condition**")

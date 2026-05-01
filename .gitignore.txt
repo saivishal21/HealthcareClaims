@@ -1,0 +1,13 @@
+# Ignore the healthcare dataset to protect privacy and stay under file limits
+healthcare_dataset.csv
+
+# Ignore Python cache and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Ignore OS-specific files
+Thumbs.db
+.DS_Store
